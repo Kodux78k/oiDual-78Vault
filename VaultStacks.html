@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>DUAL // FUSION — OS Kernel v13.2 (Safe Layout)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#030406">
+
+  <!-- Icon Pack -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <!-- Typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;500;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg-deep: #030406;
+      --glass-surface: rgba(20, 20, 25, 0.85);
+      --glass-border: rgba(255, 255, 255, 0.08);
+      --neon-cyan: #00f2ff;
+      --neon-purple: #bd00ff;
+      --neon-green: #23ac51;
+      --neon-orange: #f97316;
+      --neon-red: #ef4444;
+      --font-ui: 'Montserrat', sans-serif;
+      --font-code: 'JetBrains Mono', monospace;
+    }
+
+    * { box-sizing: border-box; outline: none; -webkit-tap-highlight-color: transparent; }
+    
+    body {
+      margin: 0; 
+      /* Ajuste para áreas seguras de iPhones e Androids modernos */
+      padding: env(safe-area-inset-top) 20px env(safe-area-inset-bottom) 20px;
+      min-height: 100vh;
+      background-color: var(--bg-deep);
+      color: #fff;
+      font-family: var(--font-ui);
+      overflow-y: auto;
+      overflow-x: hidden;
+      background-image: 
+        radial-gradient(circle at 15% 50%, rgba(189, 0, 255, 0.08) 0%, transparent 25%),
+        radial-gradient(circle at 85% 30%, rgba(0, 242, 255, 0.08) 0%, transparent 25%);
+    }
+
+    /* Layout principal adaptável */
+    .layout {
+      width: 100%; max-width: 1400px; margin: 0 auto;
+      display: grid; grid-template-columns: 380px 1fr; gap: 30px;
+      align-items: start;
+      padding-bottom: 80px; /* Espaço para não travar no fim da página */
+    }
+
+    @media (max-width: 1024px) { 
+      .layout { grid-template-columns: 1fr; gap: 20px; } 
+    }
+
+    /* Sidebar Fixa (Desktop) ou Fluida (Mobile) */
+    .fusion-card {
+      position: sticky; top: 20px;
+      background: var(--glass-surface);
+      backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      border: 1px solid var(--glass-border);
+      border-radius: 32px;
+      padding: 24px;
+      z-index: 100;
+    }
+
+    @media (max-width: 1024px) {
+      .fusion-card { position: relative; top: 0; border-radius: 24px; }
+    }
+
+    .card-header { display: flex; align-items: center; gap: 15px; cursor: pointer; }
+    .avatar-ring { width: 50px; height: 50px; border-radius: 50%; background: conic-gradient(var(--neon-cyan), var(--neon-purple), var(--neon-cyan)); padding: 2px; }
+    .avatar-inner { width: 100%; height: 100%; background: #000; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+
+    .fusion-controls { display: flex; gap: 8px; }
+    .ctrl-btn { width: 34px; height: 34px; border-radius: 10px; background: rgba(255,255,255,0.05); display: flex; align-items: center; justify-content: center; cursor: pointer; border: 1px solid transparent; }
+    .ctrl-btn.active { background: var(--neon-cyan); color: #000; }
+
+    /* Estilo das Stacks */
+    .master-card {
+      background: var(--glass-surface); border-radius: 24px; border: 1px solid var(--glass-border);
+      margin-bottom: 16px; transition: 0.3s;
+    }
+    .vault-header { padding: 20px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+    .content-box { max-height: 0; overflow: hidden; opacity: 0; transition: 0.4s ease; }
+    .master-card.expanded .content-box { max-height: 1000px; opacity: 1; padding: 20px; border-top: 1px solid rgba(255,255,255,0.05); }
+
+    .code-area { 
+      width: 100%; background: #000; border: 1px solid #333; border-radius: 12px; 
+      padding: 15px; color: #aaa; font-family: var(--font-code); font-size: 0.8rem; min-height: 150px;
+    }
+
+    /* Rodapé / Safe Zone */
+    .safe-zone-footer {
+      width: 100%;
+      height: 100px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-top: 1px solid rgba(255,255,255,0.05);
+      margin-top: 40px;
+      color: #3f3f46;
+      font-size: 0.7rem;
+      letter-spacing: 2px;
+      font-weight: 800;
+    }
+
+    /* Toasts */
+    #toasterHub { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 10000; display: flex; flex-direction: column; gap: 10px; }
+    .toast { background: #111; border: 1px solid var(--neon-green); padding: 12px 20px; border-radius: 50px; color: #fff; font-size: 0.8rem; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+
+    /* Immersive Runtime */
+    #immersiveLayer { position: fixed; inset: 0; background: #000; z-index: 9999; display: flex; flex-direction: column; transform: translateY(100%); transition: 0.5s cubic-bezier(0.19, 1, 0.22, 1); }
+    #immersiveLayer.active { transform: translateY(0); }
+  </style>
+</head>
+<body>
+
+  <div id="toasterHub"></div>
+
+  <div id="immersiveLayer">
+    <div style="height:60px; background:#0a0a0c; border-bottom:1px solid #222; display:flex; align-items:center; justify-content:space-between; padding:0 20px;">
+      <span style="color:var(--neon-green); font-weight:800; font-size:0.7rem;">LIVE RUNTIME // V13.2</span>
+      <button onclick="closeRuntime()" style="background:var(--neon-red); color:#fff; border:none; padding:8px 15px; border-radius:8px; font-weight:800; cursor:pointer;">FECHAR</button>
+    </div>
+    <div id="runtimeContainer" style="flex:1; background:#fff;"></div>
+  </div>
+
+  <div class="layout">
+    <aside>
+      <div class="fusion-card" id="mainCard">
+        <div class="card-header">
+          <div class="avatar-ring">
+            <div class="avatar-inner"><i data-lucide="zap"></i></div>
+          </div>
+          <div style="flex:1">
+            <div style="font-weight:800; font-size:1.1rem;">DUAL CORE</div>
+            <div style="font-size:0.6rem; color:var(--neon-cyan); letter-spacing:1px;">KERNEL V13.2 ONLINE</div>
+          </div>
+          <div class="fusion-controls">
+            <div class="ctrl-btn" onclick="toggleRawMode()" id="rawBtn"><i data-lucide="shield"></i></div>
+            <div class="ctrl-btn" onclick="location.reload()"><i data-lucide="refresh-cw"></i></div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <main>
+      <div style="margin-bottom:30px;">
+        <h2 style="margin:0; font-size:1.5rem; font-weight:800;">VAULT <span style="color:var(--neon-purple)">//</span> STACKS</h2>
+        <p style="color:#71717a; font-size:0.8rem;">Gerencie seus módulos injetados abaixo.</p>
+      </div>
+
+      <div id="vaultList">
+        <!-- Itens injetados -->
+      </div>
+
+      <!-- BOTÃO DE INJEÇÃO RÁPIDA -->
+      <button onclick="injectNew()" style="width:100%; height:60px; border-radius:15px; border: 2px dashed #333; background:transparent; color:#555; font-weight:800; cursor:pointer; margin-top:10px;">
+        + INJETAR NOVO MÓDULO
+      </button>
+
+      <!-- ÁREA DE SEGURANÇA DO RODAPÉ -->
+      <div class="safe-zone-footer">
+        DUAL // FUSION SYSTEM TERMINAL &copy; 2024
+      </div>
+    </main>
+  </div>
+
+  <script>
+    let stacks = JSON.parse(localStorage.getItem('fusion_stacks_v13') || '[]');
+    let rawMode = false;
+
+    function renderVault() {
+      const list = document.getElementById('vaultList');
+      if(stacks.length === 0) {
+        list.innerHTML = '<div style="color:#333; padding:40px; text-align:center;">VAULT VAZIO</div>';
+        return;
+      }
+      list.innerHTML = stacks.map(s => `
+        <div class="master-card" id="st-${s.id}">
+          <div class="vault-header" onclick="toggleStack(${s.id})">
+            <div>
+              <div style="font-weight:800; font-size:0.9rem;">${s.title}</div>
+              <div style="font-size:0.6rem; color:#52525b; margin-top:4px;">${s.date} // ${s.tag}</div>
+            </div>
+            <div style="display:flex; gap:10px;">
+              <button class="ctrl-btn" onclick="runStack(event, ${s.id})"><i data-lucide="play" size="14"></i></button>
+              <button class="ctrl-btn" onclick="deleteStack(event, ${s.id})"><i data-lucide="trash" size="14"></i></button>
+            </div>
+          </div>
+          <div class="content-box">
+            <textarea class="code-area" oninput="updateContent(${s.id}, this.value)">${s.content}</textarea>
+          </div>
+        </div>
+      `).join('');
+      lucide.createIcons();
+    }
+
+    function toggleStack(id) {
+      document.getElementById(`st-${id}`).classList.toggle('expanded');
+    }
+
+    function injectNew() {
+      const title = prompt("Nome do Módulo:");
+      if(!title) return;
+      stacks.unshift({
+        id: Date.now(),
+        title: title,
+        content: "<!-- Novo Módulo -->\n<h1>Olá Mundo</h1>",
+        tag: "APP",
+        date: new Date().toLocaleDateString()
+      });
+      save();
+    }
+
+    function deleteStack(e, id) {
+      e.stopPropagation();
+      if(!confirm("Deletar módulo?")) return;
+      stacks = stacks.filter(s => s.id !== id);
+      save();
+    }
+
+    function updateContent(id, val) {
+      const s = stacks.find(x => x.id === id);
+      if(s) s.content = val;
+      localStorage.setItem('fusion_stacks_v13', JSON.stringify(stacks));
+    }
+
+    function save() {
+      localStorage.setItem('fusion_stacks_v13', JSON.stringify(stacks));
+      renderVault();
+    }
+
+    function runStack(e, id) {
+      e.stopPropagation();
+      const s = stacks.find(x => x.id === id);
+      const container = document.getElementById('runtimeContainer');
+      container.innerHTML = '';
+      const iframe = document.createElement('iframe');
+      iframe.style.width = '100%'; iframe.style.height = '100%'; iframe.style.border = 'none';
+      container.appendChild(iframe);
+      document.getElementById('immersiveLayer').classList.add('active');
+      const doc = iframe.contentWindow.document;
+      doc.open(); doc.write(s.content); doc.close();
+    }
+
+    function closeRuntime() {
+      document.getElementById('immersiveLayer').classList.remove('active');
+    }
+
+    function toggleRawMode() {
+      rawMode = !rawMode;
+      document.getElementById('rawBtn').classList.toggle('active', rawMode);
+      showToast(rawMode ? "MODO RAW ATIVADO" : "MODO SAFE ATIVADO");
+    }
+
+    function showToast(m) {
+      const h = document.getElementById('toasterHub');
+      const t = document.createElement('div');
+      t.className = 'toast';
+      t.innerText = m;
+      h.appendChild(t);
+      setTimeout(() => t.remove(), 2000);
+    }
+
+    window.onload = () => { renderVault(); lucide.createIcons(); };
+  </script>
+</body>
+</html>
+
